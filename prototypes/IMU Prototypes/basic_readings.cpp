@@ -6,6 +6,39 @@
 
 Adafruit_MPU6050 mpu;
 
+// Tracks angle of the drone
+float pitchAngle = 0.0;
+unsigned long lastTime = 0; // milliseconds
+
+// PID State
+float errorSum = 0.0; // I
+float lastError = 0.0; // D
+
+// PID Tuning Knobs (Work on tuning Kp first on breadboard)
+float Kp = 1.2; // P 
+float Ki = 0.0; // I 
+float Kd = 0.0; // D
+
+// Target Angle (for the setpoint)
+float targetPitch = 0.0; 
+
+// computePID function
+float computePID(float setpoint, float measured, float dt) {
+  float error = setpoint - measured;          // negative = tilted one way, positive = other
+
+  // Integral — accumulates error over time
+  errorSum += error * dt;
+  // Anti-windup: clamp so integral doesn't grow forever during a crash/flip
+  // constrain(x, low, high) is equivalent to Python's max(low, min(high, x))
+  errorSum = constrain(errorSum, -200.0, 200.0);
+
+  // Derivative — rate of change of error (how fast are we improving or worsening?)
+  float dError = (error - lastError) / dt;
+  lastError = error;                           // save for next call
+
+  return (Kp * error) + (Ki * errorSum) + (Kd * dError);
+}
+
 void setup(void) {
   Serial.begin(115200);
   while (!Serial)
@@ -82,6 +115,7 @@ void setup(void) {
   }
 
   Serial.println("");
+  lastTime = millis(); // seed the timer for PID
   delay(100);
 }
 
@@ -91,27 +125,60 @@ void loop() {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
-  /* Print out the values */
-  Serial.print("Acceleration X: ");
-  Serial.print(a.acceleration.x);
-  Serial.print(", Y: ");
-  Serial.print(a.acceleration.y);
-  Serial.print(", Z: ");
-  Serial.print(a.acceleration.z);
-  Serial.println(" m/s^2");
+  // /* Print out the values */
+  // Serial.print("Acceleration X: ");
+  // Serial.print(a.acceleration.x);
+  // Serial.print(", Y: ");
+  // Serial.print(a.acceleration.y);
+  // Serial.print(", Z: ");
+  // Serial.print(a.acceleration.z);
+  // Serial.println(" m/s^2");
 
-  Serial.print("Rotation X: ");
-  Serial.print(g.gyro.x);
-  Serial.print(", Y: ");
-  Serial.print(g.gyro.y);
-  Serial.print(", Z: ");
-  Serial.print(g.gyro.z);
-  Serial.println(" rad/s");
+  // Serial.print("Rotation X: ");
+  // Serial.print(g.gyro.x);
+  // Serial.print(", Y: ");
+  // Serial.print(g.gyro.y);
+  // Serial.print(", Z: ");
+  // Serial.print(g.gyro.z);
+  // Serial.println(" rad/s");
 
-  Serial.print("Temperature: ");
-  Serial.print(temp.temperature);
-  Serial.println(" degC");
+  // Serial.print("Temperature: ");
+  // Serial.print(temp.temperature);
+  // Serial.println(" degC");
 
-  Serial.println("");
-  delay(500);
+  // Serial.println("");
+
+   // ── 2. Compute dt (time since last loop, in seconds) ────────────────────────
+  unsigned long now = millis();
+  float dt = (now - lastTime) / 1000.0;   // convert ms → seconds
+  lastTime = now;
+
+  // Guard: skip this iteration if dt is zero or implausibly large
+  // (can happen on the very first loop or after a serial stall)
+  if (dt <= 0.0 || dt > 0.5) return;
+
+  // ── 3. Complementary filter — fuse gyro + accel into a stable angle ─────────
+  //
+  // Accelerometer pitch: atan2 gives angle from gravity vector.
+  // This is accurate when still, noisy when vibrating.
+  float accelPitch = atan2(a.acceleration.y, a.acceleration.z) * 180.0 / PI;
+  //                                                               ^^^^^^^^^^
+  //                                         converts radians → degrees
+
+  // Gyro rate is in rad/s — convert to deg/s, then integrate over dt
+  float gyroPitchRate = g.gyro.x * 180.0 / PI;   // rad/s → deg/s
+
+  // Blend: 98% trust gyro short-term, 2% trust accel long-term
+  pitchAngle = 0.98 * (pitchAngle + gyroPitchRate * dt) + 0.02 * accelPitch;
+
+  // ── 4. Run PID ──────────────────────────────────────────────────────────────
+  float pidOutput = computePID(targetPitch, pitchAngle, dt);
+
+  // PID DEBUG OUTPUT
+  Serial.print("Pitch: "); Serial.print(pitchAngle, 2);
+  Serial.print("  Error: "); Serial.print(targetPitch - pitchAngle, 2);
+  Serial.print("  PID: ");   Serial.println(pidOutput, 2);
+
+  delay(5);
+
 }
