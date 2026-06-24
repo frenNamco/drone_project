@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-const int fbESCPin = 18;
+const int fbESCPin = 14;
 const int fwESCPin = 25;
 const int bbESCPin = 26;
 const int bwESCPin = 27;

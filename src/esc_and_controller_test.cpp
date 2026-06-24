@@ -8,6 +8,10 @@
 
 ControllerPtr controllers[BP32_MAX_GAMEPADS]; 
 
+int currentMillis = 0;
+int previousMillis = 0;
+int timeStep = 50;
+
 void onConnectedController(ControllerPtr ctl) {
     bool foundEmptySlot = false;
     for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
@@ -67,46 +71,73 @@ void setup() {
     ledcAttachPin(ESC_PIN, CHANNEL);
     writeESC(1000);
     delay(5000);
+
+    previousMillis = millis();
 }
 
-int controllerValue;            // Value from pressing the left trigger on DS4
-int currentThrottlePercent;     // Current throttle percent of motors, from 0% to 100%
-int throttlePercentChange;      // Change to be induced on throttle
-int us;                         // Duty cycle for PWM signal sent to ESC in microseconds
+int controllerValue;                    // Value from pressing the left trigger on DS4
+int currentThrottlePercent;             // Current throttle percent of motors, from 0% to 100%
+int currentThrottlePercentChange;       // Current change to be induced on throttle
+int previousThrottlePercentChange;      // Previous change induced on throttle
+int us;                                 // Duty cycle for PWM signal sent to ESC in microseconds
 
-int maxThrottlePercentChange = 50;
+int maxThrottlePercentChange = 5;
+
 
 void loop() {
    bool dataUpdated = BP32.update();
+
+   currentMillis = millis();
+   Serial.print(currentMillis - previousMillis);
+   Serial.print(",");
+   if ((currentMillis - previousMillis) > timeStep) {
+       previousMillis = currentMillis;
+
+       if (currentThrottlePercentChange != previousThrottlePercentChange) {
+           previousThrottlePercentChange = currentThrottlePercentChange;
+       }
+   }
+
    if (dataUpdated) {
-        Serial.printf("throttle: %4d", controllers[0]->throttle());
-        Serial.println("");
+        Serial.print(controllers[0]->throttle());
+        Serial.print(",");
 
         controllerValue = controllers[0]->throttle(); 
-        throttlePercentChange = map(controllerValue, 0, 1020, 0, maxThrottlePercentChange);
-
-        if (currentThrottlePercent >= 100) {
+        currentThrottlePercentChange = map(controllerValue, 0, 1023, 0, maxThrottlePercentChange);
+        
+        if (currentThrottlePercent >= 0 && currentThrottlePercent < 100) {
+            currentThrottlePercent += currentThrottlePercentChange;
+        } else if (currentThrottlePercent >= 100) {
             currentThrottlePercent = 100;
-        } else if (currentThrottlePercent <= 0) {
+        } else if (currentThrottlePercent < 0) {
             currentThrottlePercent = 0;
         }
-        else {
-            currentThrottlePercent += throttlePercentChange;
-        }
 
-    } else {
-        throttlePercentChange = 5;
-        
+    }
+    
+    if (currentThrottlePercentChange < previousThrottlePercentChange) {
         if (currentThrottlePercent <= 0) {
             currentThrottlePercent = 0;
         } else {
-            currentThrottlePercent -= throttlePercentChange;
+            currentThrottlePercent -= currentThrottlePercentChange;
         }
         
+    } else if (currentThrottlePercentChange == 0) {
+        if (currentThrottlePercent <= 0) {
+            currentThrottlePercent = 0;
+        } else {
+            currentThrottlePercent -= maxThrottlePercentChange;
+        }
     }
-    
-    Serial.printf("Throttle Percent: %d\n", currentThrottlePercent);
+
+
+    Serial.print(currentThrottlePercentChange);
+    Serial.print(",");
+    Serial.print(previousThrottlePercentChange);
+    Serial.print(",");
+    Serial.print(currentThrottlePercent);
+    Serial.print(",");
     us =  map(currentThrottlePercent, 0, 100, 1000, 2000);
-    Serial.printf("Pulse Width: ")
+    Serial.println(us);
     writeESC(us);
 }
