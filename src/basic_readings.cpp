@@ -15,7 +15,7 @@ float errorSum = 0.0; // I
 float lastError = 0.0; // D
 
 // PID Tuning Knobs (Work on tuning Kp first on breadboard)
-float Kp = 1.2; // P 
+float Kp = 1.9; // P 
 float Ki = 0.0; // I 
 float Kd = 0.0; // D
 
@@ -175,9 +175,14 @@ void loop() {
   float pidOutput = computePID(targetPitch, pitchAngle, dt);
 
   // PID DEBUG OUTPUT
-  Serial.print("Pitch: "); Serial.print(pitchAngle, 2);
-  Serial.print("  Error: "); Serial.print(targetPitch - pitchAngle, 2);
-  Serial.print("  PID: ");   Serial.println(pidOutput, 2);
+  //Serial.print("Pitch: "); 
+  Serial.print(pitchAngle, 2);
+  Serial.print(',');
+  //Serial.print("  Error: "); 
+  Serial.print(targetPitch - pitchAngle, 2);
+  Serial.print(',');
+  //Serial.print("  PID: ");
+  Serial.println(pidOutput, 2);
 
   delay(5);
 
